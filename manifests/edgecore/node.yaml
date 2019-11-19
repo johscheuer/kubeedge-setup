@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Node
+metadata:
+  name: edgenode
+  namespace: edgenode
+  labels:
+    name: edgenode
+    node-role.kubernetes.io/edge: ""
+spec:
+  taints:
+  - effect: NoSchedule
+    key: node-role.kubeedge.io
+    value: edge

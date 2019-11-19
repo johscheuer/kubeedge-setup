@@ -2,10 +2,7 @@
 
 ## Quickstart
 
-
-
-
-
+Coming soon !
 
 ## Setting up the cloudcore
 
@@ -48,13 +45,13 @@ rm /tmp/containerd.tar.gz
 On the cloud install [kubeadm]:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y apt-transport-https curl
+sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y apt-transport-https curl
 curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
 cat <<EOF | sudo tee /etc/apt/sources.list.d/kubernetes.list
 deb https://apt.kubernetes.io/ kubernetes-xenial main
 EOF
 sudo apt-get update
-sudo apt-get install -y kubelet=1.16.3-00 kubeadm=1.16.3-00 kubectl=1.16.3-00
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y kubelet=1.16.3-00 kubeadm=1.16.3-00 kubectl=1.16.3-00
 sudo apt-mark hold kubelet kubeadm kubectl
 ```
 
@@ -81,10 +78,10 @@ kubectl taint nodes node-role.kubernetes.io/master- --all
 And finally install a network plugin:
 
 ```bash
-kubectl apply -f calico.yaml
+kubectl apply -f manifests/calico.yaml
 ```
 
-## Install the Cloud Part
+### Install the Cloud Part
 
 Install the CRDs for kubedge:
 
@@ -98,72 +95,115 @@ Prepare the certificates for the cloudcore:
 ```bash
 curl -sLO https://raw.githubusercontent.com/kubeedge/kubeedge/v1.1.0/build/tools/certgen.sh
 chmod +x certgen.sh
+sudo sed -i 's/RANDFILE/#RANDFILE/g' /etc/ssl/openssl.cnf
 sudo ./certgen.sh buildSecret | tee ./manifests/cloudcore/06-secret.yaml
-#readonly caPath=${CA_PATH:-/etc/kubeedge/ca}
-#readonly caSubject=${CA_SUBJECT:-/C=CN/ST=Zhejiang/L=Hangzhou/O=KubeEdge/CN=kubeedge.io}
-#readonly certPath=${CERT_PATH:-/etc/kubeedge/certs}
-#readonly subject=${SUBJECT:-/C=CN/ST=Zhejiang/L=Hangzhou/O=KubeEdge/CN=kubeedge.io}
 ```
 
-Now we can install the `kubeedge` `cloudcore`:
+Now we can install the `kubeedge` `cloudcore` in Kubernetes:
+
+```bash
+kubectl apply -f manifests/cloudcore/
+```
+
+### Prepare files for edgecore
+
+```bash
+kubectl apply -f manifests/edgecore/node.yaml
+```
+
+Now we need to pull the certificates for the `edgecore`:
+
+```bash
+mkdir -p manifests/edgecore/certs
+kubectl -n kubeedge get secret cloudcore -o jsonpath={.data."edge\.crt"} | base64 -d > manifests/edgecore/certs/edge.crt
+kubectl -n kubeedge get secret cloudcore -o jsonpath={.data."edge\.key"} | base64 -d > manifests/edgecore/certs/edge.key
+kubectl -n kubeedge get secret cloudcore -o jsonpath={.data."rootCA\.crt"} | base64 -d > manifests/edgecore/certs/rootCA.crt
+```
+
+## Setting up the edgecore
+
+In the first place we need to download the required binaries:
 
 ```bash
 pushd /tmp
 curl -sLO https://github.com/kubeedge/kubeedge/releases/download/v1.1.0/kubeedge-v1.1.0-linux-amd64.tar.gz
-#curl -sLO https://github.com/kubeedge/kubeedge/releases/download/v1.1.0/checksum_kubeedge-v1.1.0-linux-amd64.tar.gz.txt
 tar xvfz kubeedge-v1.1.0-linux-amd64.tar.gz
-# Somehow kubeedge require this strange setup
-# TODO try to move this to another folder
-mkdir -p /etc/kubeedge/conf
-sudo mv kubeedge-v1.1.0-linux-amd64/cloud/cloudcore/cloudcore /etc/kubeedge
-sudo mv kubeedge-v1.1.0-linux-amd64/cloud/cloudcore/conf/* /etc/kubeedge/conf/
 popd
 ```
 
 ```bash
-sudo mkdir -p /var/lib/kubeedge
-# Changed the kubeconfig path
-# todo add extra cloudcore user !
-sudo ~/cmd/cloudcore
-# Would be nice if we would run this inside of kubernetes
-# also we don't want to run this as cluster admin!
+sudo mkdir -p /etc/kubeedge/conf
+# Move all files into place
+sudo mv /tmp/kubeedge-v1.1.0-linux-amd64/edge/edgecore /etc/kubeedge
+sudo mv /tmp/kubeedge-v1.1.0-linux-amd64/edge/conf/* /etc/kubeedge/conf
 ```
 
+Before we can start running the `edgecore` we need to install some further stuff:
+
 ```bash
-cat <<EOF | sudo tee /etc/systemd/system/cloudcore.service
+sudo apt update
+# TODO test containerd instead of docker
+sudo apt install -y docker.io conntrack
+```
+
+Update the edge configuration:
+
+```bash
+sudo sed -i 's/fb4ebb70-2783-42b8-b3ef-63e2fd6d242e/edgenode/g' /etc/kubeedge/conf/edge.yaml
+sudo sed -i 's/interface-name:.*/interface-name: enp0s8/g' /etc/kubeedge/conf/edge.yaml
+sudo sed -i 's#wss://0.0.0.0:10000#wss://172.2.0.2:30000#g' /etc/kubeedge/conf/edge.yaml
+```
+
+Copy the certificates from the `cloudcore` onto the `edgecore`:
+
+```bash
+sudo mkdir -p /etc/kubeedge/certs/
+sudo cp manifests/edgecore/certs/* /etc/kubeedge/certs/
+```
+
+Create a systemd file for the `edgecore`:
+
+```bash
+cat << 'EOF' | sudo tee /etc/systemd/system/edgecore.service
 [Unit]
-Description=cloudcore.service
+Description=edgecore.service
 
 [Service]
 Type=simple
-ExecStart=/etc/kubeedge/cloudcore
+ExecStart=/etc/kubeedge/edgecore
 
 [Install]
 WantedBy=multi-user.target
 EOF
+```
 
+Reload the daemon and start the service:
+
+```bash
 sudo systemctl daemon-reload
-sudo systemctl start cloudcore
-sudo systemctl enable cloudcore
+sudo systemctl restart edgecore
+sudo systemctl enable edgecore
 ```
 
+## Test setup
 
-
-## Setting up the edgecore
-
+Let's create a simple nginx deployment:
 
 ```bash
-pushd /tmp
-curl -sLO https://github.com/kubeedge/kubeedge/releases/download/v1.1.0/edgesite-v1.1.0-linux-amd64.tar.gz
-tar xvfz edgesite-v1.1.0-linux-amd64.tar.gz
-popd
+kubectl apply -f manifests/demo/nginx.yaml
 ```
 
+Verify that we can access the nginx pod:
+
 ```bash
-sudo mkdir -p /etc/kubeedge
-todo
-https://docs.kubeedge.io/en/latest/setup/setup.html#id2
-# https://github.com/kubeedge/kubeedge/tree/master/docs
-# https://github.com/kubeedge/kubeedge/tree/master/build/edge
-# https://docs.kubeedge.io/en/latest/modules/edge/edged.html
+curl -I 172.2.0.3
+HTTP/1.1 200 OK
+Server: nginx/1.15.12
+Date: Tue, 19 Nov 2019 18:23:21 GMT
+Content-Type: text/html
+Content-Length: 612
+Last-Modified: Tue, 16 Apr 2019 13:08:19 GMT
+Connection: keep-alive
+ETag: "5cb5d3c3-264"
+Accept-Ranges: bytes
 ```

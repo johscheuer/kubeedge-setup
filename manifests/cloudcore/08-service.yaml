@@ -7,9 +7,12 @@ metadata:
     k8s-app: kubeedge
     kubeedge: cloudcore
 spec:
+  type: NodePort
   ports:
   - port: 10000
     name: cloudhub
+    nodePort: 30000
   selector:
     k8s-app: kubeedge
     kubeedge: cloudcore
+

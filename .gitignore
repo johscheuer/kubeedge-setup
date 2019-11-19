@@ -1,2 +1,5 @@
 .vagrant
 todos
+manifests/cloudcore/06-secret.yaml
+manifests/edgecore/certs
+ubuntu-bionic-18.04-cloudimg-console.log
