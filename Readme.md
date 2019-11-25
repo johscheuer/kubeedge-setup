@@ -84,7 +84,7 @@ kubectl apply -f manifests/calico.yaml
 
 ### Install the Cloud Part
 
-Install the CRDs for kubedge:
+Install the CRDs for kubedge (we are still von cloudcore):
 
 ```bash
 kubectl create -f https://raw.githubusercontent.com/kubeedge/kubeedge/v1.1.0/build/crds/devices/devices_v1alpha1_device.yaml
@@ -123,11 +123,12 @@ kubectl -n kubeedge get secret cloudcore -o jsonpath={.data."rootCA\.crt"} | bas
 
 ## Setting up the edgecore
 
+Jump into the `edgenode` machine: `vagrant ssh edgenode`.
 In the first place we need to download the required binaries:
 
 ```bash
 pushd /tmp
-curl -sLO https://github.com/kubeedge/kubeedge/releases/download/v1.1.0/kubeedge-v1.1.0-linux-amd64.tar.gz
+curl -LO https://github.com/kubeedge/kubeedge/releases/download/v1.1.0/kubeedge-v1.1.0-linux-amd64.tar.gz
 tar xvfz kubeedge-v1.1.0-linux-amd64.tar.gz
 popd
 ```
@@ -184,14 +185,30 @@ Reload the daemon and start the service:
 sudo systemctl daemon-reload
 sudo systemctl restart edgecore
 sudo systemctl enable edgecore
+# Check the status of the edgecore
+sudo systemctl status edgecoresudo systemctl status edgecore
 ```
 
 ## Test setup
+
+On the `cloudcore` machine validate that the `edgenode` came up:
+
+```bash
+kubectl get nodes
+```
 
 Let's create a simple nginx deployment:
 
 ```bash
 kubectl apply -f manifests/demo/nginx.yaml
+```
+
+Check if the Pod is successfully scheduled and started:
+
+```bash
+$ kubectl get po -o wide
+NAME                              READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE   READINESS GATES
+nginx-deployment-5944d75f-sctkh   1/1     Running   0          34s   172.17.0.2   edgenode   <none>           <none>
 ```
 
 Verify that we can access the nginx pod:

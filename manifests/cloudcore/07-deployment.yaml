@@ -19,7 +19,9 @@ spec:
     spec:
       initContainers:
       - name: kubeconfig
-        image: alpine:3.9
+        image: busybox:1.31.1
+        securityContext:
+          runAsUser: 65534
         volumeMounts:
         - name: kubeconfig
           mountPath: /etc/kubeedge/cloud
@@ -28,13 +30,13 @@ spec:
         - /bin/sh
         - -c
         - |
-          apk --no-cache add coreutils && cat | tee /etc/kubeedge/cloud/kubeconfig.yaml <<EOF
+          cat | tee /etc/kubeedge/cloud/kubeconfig.yaml <<EOF
           apiVersion: v1
           kind: Config
           clusters:
           - name: kubeedge
             cluster:
-              certificate-authority-data: $(cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt | base64 -w 0)
+              certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
           users:
           - name: kubeedge
             user:
@@ -49,7 +51,8 @@ spec:
       containers:
       - name: cloudcore
         image: kubeedge/cloudcore:v1.1.0
-        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 65534
         ports:
         - containerPort: 10000
           name: cloudhub
