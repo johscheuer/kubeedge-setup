@@ -34,15 +34,16 @@ sudo sysctl --system
 Now we can install [containerd](https://containerd.io):
 
 ```bash
-export CONTAINERD_VER=1.3.0
-curl -sLo /tmp/containerd.tar.gz "https://storage.googleapis.com/cri-containerd-release/cri-containerd-${CONTAINERD_VER}.linux-amd64.tar.gz"
+export CONTAINERD_VER=1.3.1
+curl -Lo /tmp/containerd.tar.gz "https://storage.googleapis.com/cri-containerd-release/cri-containerd-${CONTAINERD_VER}.linux-amd64.tar.gz"
 sudo tar -C / -xzf /tmp/containerd.tar.gz
 sudo systemctl start containerd
 sudo systemctl enable containerd
+sudo systemctl status containerd
 rm /tmp/containerd.tar.gz
 ```
 
-On the cloud install [kubeadm]:
+We need to install [kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/) to bootstrap our Kubernetes cluster:
 
 ```bash
 sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y apt-transport-https curl
@@ -58,7 +59,7 @@ sudo apt-mark hold kubelet kubeadm kubectl
 Install the Kubernetes cluster:
 
 ```bash
-sudo kubeadm init --kubernetes-version=1.16.3 --skip-token-print --upload-certs
+sudo kubeadm init --kubernetes-version=1.16.3 --skip-token-print
 ```
 
 After the installation run the following steps to be able tu use `kubectl` as normal user:
