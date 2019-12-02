@@ -39,7 +39,6 @@ curl -Lo /tmp/containerd.tar.gz "https://storage.googleapis.com/cri-containerd-r
 sudo tar -C / -xzf /tmp/containerd.tar.gz
 sudo systemctl start containerd
 sudo systemctl enable containerd
-sudo systemctl status containerd
 rm /tmp/containerd.tar.gz
 ```
 
@@ -106,6 +105,17 @@ Now we can install the `kubeedge` `cloudcore` in Kubernetes:
 kubectl apply -f manifests/cloudcore/
 ```
 
+Validate the installation:
+
+```bash
+kubectl -n kubeedge get deploy,svc
+NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/cloudcore   1/1     1            1           36s
+
+NAME                TYPE       CLUSTER-IP    EXTERNAL-IP   PORT(S)           AGE
+service/cloudcore   NodePort   10.100.30.4   <none>        10000:30000/TCP   36s
+```
+
 ### Prepare files for edgecore
 
 ```bash
@@ -126,11 +136,50 @@ kubectl -n kubeedge get secret cloudcore -o jsonpath={.data."rootCA\.crt"} | bas
 Jump into the `edgenode` machine: `vagrant ssh edgenode`.
 In the first place we need to download the required binaries:
 
+Install the prerequisite:
+
 ```bash
-pushd /tmp
-curl -LO https://github.com/kubeedge/kubeedge/releases/download/v1.1.0/kubeedge-v1.1.0-linux-amd64.tar.gz
-tar xvfz kubeedge-v1.1.0-linux-amd64.tar.gz
-popd
+sudo tee -a /etc/modules-load.d/containerd.conf <<'EOF'
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+# Setup required sysctl params, these persist across reboots.
+sudo tee /etc/sysctl.d/99-kubernetes-cri.conf <<'EOF'
+net.bridge.bridge-nf-call-iptables  = 1
+net.ipv4.ip_forward                 = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+EOF
+
+sudo sysctl --system
+```
+
+Now we can install [containerd](https://containerd.io):
+
+```bash
+export CONTAINERD_VER=1.3.1
+curl -Lo /tmp/containerd.tar.gz "https://storage.googleapis.com/cri-containerd-release/cri-containerd-${CONTAINERD_VER}.linux-amd64.tar.gz"
+sudo tar -C / -xzf /tmp/containerd.tar.gz
+sudo systemctl start containerd
+sudo systemctl enable containerd
+rm /tmp/containerd.tar.gz
+```
+
+We also need to install `conntrack`:
+
+```bash
+sudo apt update
+sudo apt install -y conntrack
+```
+
+### EdgeCore
+
+```bash
+curl -Lo /tmp/kubeedge.tar.gz https://github.com/kubeedge/kubeedge/releases/download/v1.1.0/kubeedge-v1.1.0-linux-amd64.tar.gz
+tar xvfz /tmp/kubeedge.tar.gz -C /tmp
 ```
 
 ```bash
@@ -140,20 +189,15 @@ sudo mv /tmp/kubeedge-v1.1.0-linux-amd64/edge/edgecore /etc/kubeedge
 sudo mv /tmp/kubeedge-v1.1.0-linux-amd64/edge/conf/* /etc/kubeedge/conf
 ```
 
-Before we can start running the `edgecore` we need to install some further stuff:
-
-```bash
-sudo apt update
-# TODO test containerd instead of docker
-sudo apt install -y docker.io conntrack
-```
-
 Update the edge configuration:
 
 ```bash
 sudo sed -i 's/fb4ebb70-2783-42b8-b3ef-63e2fd6d242e/edgenode/g' /etc/kubeedge/conf/edge.yaml
 sudo sed -i 's/interface-name:.*/interface-name: enp0s8/g' /etc/kubeedge/conf/edge.yaml
 sudo sed -i 's#wss://0.0.0.0:10000#wss://172.2.0.2:30000#g' /etc/kubeedge/conf/edge.yaml
+sudo sed -i 's/runtime-type:.*/runtime-type: remote/g' /etc/kubeedge/conf/edge.yaml
+sudo sed -i 's/remote-runtime-endpoint:.*/remote-runtime-endpoint: unix:///run/containerd/containerd.sock/g' /etc/kubeedge/conf/edge.yaml
+sudo sed -i 's/remote-image-endpoint:.*/remote-image-endpoint: unix:///run/containerd/containerd.sock/g' /etc/kubeedge/conf/edge.yaml
 ```
 
 Copy the certificates from the `cloudcore` onto the `edgecore`:
@@ -186,7 +230,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart edgecore
 sudo systemctl enable edgecore
 # Check the status of the edgecore
-sudo systemctl status edgecoresudo systemctl status edgecore
+sudo systemctl status edgecore
 ```
 
 ## Test setup
