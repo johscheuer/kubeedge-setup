@@ -138,41 +138,11 @@ In the first place we need to download the required binaries:
 
 Install the prerequisite:
 
-```bash
-sudo tee -a /etc/modules-load.d/containerd.conf <<'EOF'
-overlay
-br_netfilter
-EOF
-
-sudo modprobe overlay
-sudo modprobe br_netfilter
-
-# Setup required sysctl params, these persist across reboots.
-sudo tee /etc/sysctl.d/99-kubernetes-cri.conf <<'EOF'
-net.bridge.bridge-nf-call-iptables  = 1
-net.ipv4.ip_forward                 = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-EOF
-
-sudo sysctl --system
-```
-
-Now we can install [containerd](https://containerd.io):
-
-```bash
-export CONTAINERD_VER=1.3.1
-curl -Lo /tmp/containerd.tar.gz "https://storage.googleapis.com/cri-containerd-release/cri-containerd-${CONTAINERD_VER}.linux-amd64.tar.gz"
-sudo tar -C / -xzf /tmp/containerd.tar.gz
-sudo systemctl start containerd
-sudo systemctl enable containerd
-rm /tmp/containerd.tar.gz
-```
-
-We also need to install `conntrack`:
+We also need to install `conntrack` adn [docker](https://docs.docker.com/install/linux/docker-ce/ubuntu/):
 
 ```bash
 sudo apt update
-sudo apt install -y conntrack
+sudo apt install -y conntrack docker.io
 ```
 
 ### EdgeCore
@@ -195,9 +165,6 @@ Update the edge configuration:
 sudo sed -i 's/fb4ebb70-2783-42b8-b3ef-63e2fd6d242e/edgenode/g' /etc/kubeedge/conf/edge.yaml
 sudo sed -i 's/interface-name:.*/interface-name: enp0s8/g' /etc/kubeedge/conf/edge.yaml
 sudo sed -i 's#wss://0.0.0.0:10000#wss://172.2.0.2:30000#g' /etc/kubeedge/conf/edge.yaml
-sudo sed -i 's/runtime-type:.*/runtime-type: remote/g' /etc/kubeedge/conf/edge.yaml
-sudo sed -i 's/remote-runtime-endpoint:.*/remote-runtime-endpoint: unix:///run/containerd/containerd.sock/g' /etc/kubeedge/conf/edge.yaml
-sudo sed -i 's/remote-image-endpoint:.*/remote-image-endpoint: unix:///run/containerd/containerd.sock/g' /etc/kubeedge/conf/edge.yaml
 ```
 
 Copy the certificates from the `cloudcore` onto the `edgecore`:
