@@ -177,7 +177,7 @@ sudo cp manifests/edgecore/certs/* /etc/kubeedge/certs/
 Create a systemd file for the `edgecore`:
 
 ```bash
-cat << 'EOF' | sudo tee /etc/systemd/system/edgecore.service
+sudo tee /etc/systemd/system/edgecore.service <<EOF
 [Unit]
 Description=edgecore.service
 
